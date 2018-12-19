@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<canvas style="width: 400px; height: 200px" id=scope></canvas>
+<div><input id=mix type=range min=0 max=1 step=0.0001 value=0.1></div>
+<script>
+
+const ac = new AudioContext();
+
+function getTriggeredOffset(buf) {
+  let trig = 0;
+  let last = buf[0];
+  for (let i = 0; i < buf.length; i++) {
+    if (last < 0 && buf[i] >= 0)
+      return i;
+    last = buf[i];
+  }
+}
+
+function startScope(analyser) {
+  const canvas = document.getElementById('scope');
+  const ctx = canvas.getContext('2d');
+  const buf = new Float32Array(4096);
+
+  
+  function draw() {
+    const { offsetWidth: width, offsetHeight: height } = canvas;
+    canvas.width = width * devicePixelRatio;
+    canvas.height = height * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+
+    const off = Math.floor((ac.sampleRate / 440) - ((ac.currentTime * ac.sampleRate) % (ac.sampleRate / 440))); //getTriggeredOffset(buf);
+    analyser.getFloatTimeDomainData(buf);
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.beginPath();
+    for (let i = 0; i < width; i++) {
+      ctx.lineTo(i, height - (buf[i+off] / 2 + 0.5) * height);
+    }
+    ctx.stroke();
+  }
+
+  requestAnimationFrame(function scheduleDraw(now) {
+    draw(now);
+    requestAnimationFrame(scheduleDraw);
+  });
+}
+
+const mixInput = document.getElementById('mix');
+
+ac.audioWorklet.addModule('worklet.js').then(() => {
+  const node = new AudioWorkletNode(ac, 'PhasedSource');
+
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain);
+  osc.start();
+  gain.connect(node.parameters.get('phase'));
+
+  window.node = node;
+  node.parameters.get('frequency').value = 440;
+  node.connect(ac.destination);
+
+  const analyser = ac.createAnalyser();
+  node.connect(analyser);
+  startScope(analyser);
+
+  const mixValue = () => mixInput.valueAsNumber / 100;
+  const checkMix = () => {
+    gain.gain.linearRampToValueAtTime(mixValue(), ac.currentTime + 0.001);
+  };
+  mixInput.addEventListener('input', checkMix);
+  gain.gain.value = mixValue();
+});
+
+</script>
