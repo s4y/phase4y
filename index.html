@@ -65,6 +65,8 @@ ac.audioWorklet.addModule('worklet.js').then(() => {
 
   const mixValue = () => mixInput.valueAsNumber / 100;
   const checkMix = () => {
+    if (ac.state == 'suspended')
+      ac.resume();
     gain.gain.linearRampToValueAtTime(mixValue(), ac.currentTime + 0.001);
   };
   mixInput.addEventListener('input', checkMix);
